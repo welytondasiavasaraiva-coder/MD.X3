@@ -1,218 +1,97 @@
-import streamlit as st
-import time
-import pandas as pd
-from datetime import datetime
+next-holding-app/
+├── app.py              # Lógica principal (Back-end)
+├── database.db         # Banco de dados (SQLite para começar)
+├── requirements.txt    # Dependências do projeto
+├── templates/
+│   ├── login.html      # Tela de entrada Next
+│   ├── admin.html      # Seu Painel (Dono/CEO)
+│   └── dashboard.html  # Painel do Funcionário (Vendas/2k)
+└── static/
+    └── css/style.css   # Estilização visual (Dourado/Azul Marinho)
+    from flask import Flask, render_template, request, redirect, url_for, session, flash
+import sqlite3
 
-# =================================================================
-# CONFIGURAÇÃO DE ELITE - HOLDING NEXT
-# =================================================================
-st.set_page_config(
-    page_title="HOLDING NEXT | SISTEMA OPERACIONAL",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+app = Flask(__name__)
+app.secret_key = "next_ceo_key_2026"
 
-# --- CSS PERSONALIZADO PARA APARENCIA DE SOFTWARE PAGO ---
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #161b22; padding: 20px; border-radius: 15px; border: 1px solid #30363d; }
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .css-1offfwp { color: #00ff00; }
-    </style>
-    """, unsafe_allow_html=True)
+# Simulação de Banco de Dados (Configuração de Rotas)
+def get_db():
+    conn = sqlite3.connect('database.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-# =================================================================
-# BANCO DE DADOS EM MEMÓRIA (LÓGICA DA EMPRESA)
-# =================================================================
-if 'usuarios' not in st.session_state:
-    st.session_state.usuarios = {
-        'Wellington': {
-            'senha': 'ceo', 
-            'cargo': 'Dono', 
-            'lucro_real': 15450.00, 
-            'status': 'Ativo', 
-            'aviso': '',
-            'vendas_totais': 41
-        },
-        'Carlos_Vendedor': {
-            'senha': 'v1', 
-            'cargo': 'Vendedor', 
-            'saldo_app': 450.00, 
-            'vendas': 2, 
-            'status': 'Ativo', 
-            'aviso': ''
-        },
-        'Ana_Next': {
-            'senha': 'v2', 
-            'cargo': 'Vendedor', 
-            'saldo_app': 0.00, 
-            'vendas': 0, 
-            'status': 'Ativo', 
-            'aviso': ''
-        }
-    }
+@app.route('/')
+def index():
+    return render_template('login.html')
 
-if 'lista_negra' not in st.session_state:
-    st.session_state.lista_negra = []
+# LÓGICA DE DIVISÃO DE LUCRO (O SPLIT)
+@app.route('/venda_concluida/<int:user_id>')
+def processar_venda(user_id):
+    db = get_db()
+    # Adiciona R$ 225 para o vendedor (Saldo Interno)
+    db.execute('UPDATE usuarios SET saldo_interno = saldo_interno + 225 WHERE id = ?', (user_id,))
+    # Adiciona R$ 375 para o Dono (Lucro Real Wellington)
+    db.execute('UPDATE lucro_ceo SET total = total + 375 WHERE id = 1')
+    db.commit()
+    return redirect(url_for('dashboard'))
 
-if 'vendas_recentes' not in st.session_state:
-    st.session_state.vendas_recentes = []
-
-# =================================================================
-# FUNÇÕES DE COMANDO (WELLINGTON)
-# =================================================================
-def advertir_usuario(nome):
-    st.session_state.usuarios[nome]['aviso'] = "⚠️ VOCÊ VIOLOU AS REGRAS DE OURO. PRÓXIMO ERRO É BANIMENTO."
-    st.toast(f"Advertência enviada para {nome}")
-
-def congelar_usuario(nome):
-    st.session_state.usuarios[nome]['status'] = "Congelado"
-    st.session_state.usuarios[nome]['aviso'] = "❄️ SALDO CONGELADO PELA SEGURANÇA PARA AUDITORIA."
-    st.toast(f"Conta de {nome} congelada.")
-
-def banir_permanente(nome):
-    saldo = st.session_state.usuarios[nome]['saldo_app']
-    st.session_state.lista_negra.append({
-        'Data': datetime.now().strftime("%d/%m/%Y %H:%M"),
-        'ID': nome,
-        'Saldo Retido': f"R$ {saldo:.2f}",
-        'Status Final': "BANIDO"
-    })
-    st.session_state.usuarios[nome]['status'] = "Banido"
-    st.toast(f"USUÁRIO {nome} EXPULSO DA HOLDING.")
-
-# =================================================================
-# TELAS DO SISTEMA
-# =================================================================
-
-def tela_login():
-    st.markdown("<h1 style='text-align: center;'>🚀 NEXT HOLDING</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Sistema de Gestão de Vendas de Elite</p>", unsafe_allow_html=True)
+# LÓGICA DE BANIMENTO (O BOTÃO X)
+@app.route('/banir/<int:user_id>', methods=['POST'])
+def banir_usuario(user_id):
+    if session.get('cargo') != 'Dono':
+        return "Acesso Negado", 403
     
-    col1, col2, col3 = st.columns([1,1.5,1])
-    with col2:
-        with st.form("login_form"):
-            user = st.text_input("Usuário")
-            senha = st.text_input("Chave de Acesso", type="password")
-            entrar = st.form_submit_button("ACESSAR PAINEL")
-            
-            if entrar:
-                if user in st.session_state.usuarios:
-                    if st.session_state.usuarios[user]['senha'] == senha:
-                        if st.session_state.usuarios[user]['status'] == "Banido":
-                            st.error("🚫 ACESSO BLOQUEADO PELA ADMINISTRAÇÃO NEXT. Violação grave detectada.")
-                        else:
-                            st.session_state.logado = user
-                            st.rerun()
-                    else:
-                        st.error("Senha incorreta.")
-                else:
-                    st.error("Usuário não cadastrado.")
+    db = get_db()
+    db.execute('UPDATE usuarios SET status = "Banido" WHERE id = ?', (user_id,))
+    db.commit()
+    flash(f"Usuário {user_id} banido com sucesso. Saldo retido.")
+    return redirect(url_for('admin'))
 
-def painel_ceo():
-    st.sidebar.markdown(f"## 👑 CEO: {st.session_state.logado}")
-    aba = st.sidebar.radio("Comandos", ["Dashboard Financeiro", "Gestão de Equipe", "Arquivo de Banidos", "Configuração da Marca"])
-    
-    if st.sidebar.button("LOGOUT / SAIR"):
-        st.session_state.logado = None
-        st.rerun()
+if __name__ == '__main__':
+    app.run(debug=True)
+    <!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Next Holding - Painel CEO</title>
+</head>
+<body class="bg-slate-900 text-white font-sans">
+    <nav class="p-6 border-b border-yellow-600 flex justify-between">
+        <h1 class="text-2xl font-bold text-yellow-500">NEXT HOLDING 👑</h1>
+        <span>Bem-vindo, CEO Wellington</span>
+    </nav>
 
-    if aba == "Dashboard Financeiro":
-        st.header("📊 Resumo da Operação Holding")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Meu Lucro Real", f"R$ {st.session_state.usuarios['Wellington']['lucro_real']:.2f}")
-        c2.metric("Vendedores Ativos", len([u for u in st.session_state.usuarios if st.session_state.usuarios[u]['cargo'] == 'Vendedor']))
-        c3.metric("Ticket Médio", "R$ 600,00")
+    <main class="p-10">
+        <div class="bg-gradient-to-r from-yellow-600 to-yellow-800 p-8 rounded-xl shadow-2xl mb-10">
+            <h2 class="text-xl opacity-80">Seu Lucro Líquido Real (R$ 375/venda)</h2>
+            <p class="text-5xl font-black mt-2">R$ {{ lucro_total }}</p>
+        </div>
 
-        st.divider()
-        st.subheader("📝 Histórico de Split (R$ 375 por Venda)")
-        if st.session_state.vendas_recentes:
-            st.table(st.session_state.vendas_recentes)
-        else:
-            st.info("Aguardando primeiras vendas da sessão.")
-
-    elif aba == "Gestão de Equipe":
-        st.header("👥 Controle de Funcionários")
-        for user, info in st.session_state.usuarios.items():
-            if info['cargo'] == "Vendedor" and info['status'] != "Banido":
-                with st.container():
-                    col_user, col_status, col_btn = st.columns([2, 2, 3])
-                    col_user.write(f"**{user}**")
-                    col_status.write(f"Status: {info['status']} | Saldo: R$ {info['saldo_app']:.2f}")
-                    
-                    with col_btn:
-                        btn1, btn2, btn3 = st.columns(3)
-                        if btn1.button("⚠️ ADV", key=f"adv_{user}"): advertir_usuario(user)
-                        if btn2.button("❄️ CONG", key=f"cong_{user}"): congelar_usuario(user)
-                        if btn3.button("🚫 BAN", key=f"ban_{user}"): 
-                            banir_permanente(user)
-                            st.rerun()
-                    st.divider()
-
-    elif aba == "Arquivo de Banidos":
-        st.header("📂 Lista Negra - Contas Encerradas")
-        if st.session_state.lista_negra:
-            st.dataframe(pd.DataFrame(st.session_state.lista_negra), use_container_width=True)
-        else:
-            st.write("Nenhum banimento registrado.")
-
-    elif aba == "Configuração da Marca":
-        st.header("🛠️ Ajustes de Identidade")
-        nome = st.text_input("Novo Nome da Empresa", "Next Holding")
-        if st.button("Salvar"): st.success(f"Nome alterado para {nome}")
-
-def painel_vendedor(user):
-    u = st.session_state.usuarios[user]
-    st.sidebar.markdown(f"### 🎯 Operador: {user}")
-    if st.sidebar.button("SAIR"):
-        st.session_state.logado = None
-        st.rerun()
-
-    if u['aviso']:
-        st.error(u['aviso'])
-
-    st.header("⚡ Painel de Vendas Next")
-    st.metric("Meu Saldo App", f"R$ {u['saldo_app']:.2f}", delta="Meta R$ 2.000,00")
-    
-    progresso = min(u['saldo_app'] / 2000, 1.0)
-    st.progress(progresso)
-    
-    if u['status'] == "Congelado":
-        st.warning("⚠️ Seu saldo está bloqueado para retirada. Continue operando enquanto analisamos.")
-
-    st.divider()
-    st.subheader("📦 Vitrine de Produtos (R$ 600)")
-    c1, c2, c3 = st.columns(3)
-    with c1: 
-        st.write("**Next Predictor**")
-        if st.button("Link 1"): st.code(f"next.com/pay?ref={user}")
-    with c2:
-        st.write("**Auto-Vendas**")
-        if st.button("Link 2"): st.code(f"next.com/pay?ref={user}")
-    with c3:
-        st.write("**Next Recovery**")
-        if st.button("Link 3"): st.code(f"next.com/pay?ref={user}")
-
-    st.divider()
-    if st.button("📢 SIMULAR VENDA (TESTE)"):
-        st.session_state.usuarios['Wellington']['lucro_real'] += 375.00
-        st.session_state.usuarios[user]['saldo_app'] += 225.00
-        st.session_state.usuarios[user]['vendas'] += 1
-        st.session_state.vendas_recentes.append({'Hora': datetime.now().strftime("%H:%M"), 'Vendedor': user, 'Lucro CEO': 'R$ 375.00'})
-        st.balloons()
-        st.success("Venda processada com sucesso!")
-        time.sleep(1)
-        st.rerun()
-
-# =================================================================
-# MOTOR PRINCIPAL
-# =================================================================
-if 'logado' not in st.session_state or st.session_state.logado is None:
-    tela_login()
-else:
-    if st.session_state.usuarios[st.session_state.logado]['cargo'] == "Dono":
-        painel_ceo()
-    else:
-        painel_vendedor(st.session_state.logado)
+        <div class="bg-slate-800 rounded-lg p-6">
+            <h3 class="text-xl mb-4 font-semibold text-blue-400 font-bold">Gerenciar Equipe (Elite Next)</h3>
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="border-b border-slate-700">
+                        <th class="py-2">Vendedor</th>
+                        <th>Vendas</th>
+                        <th>Saldo 2k</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b border-slate-700 hover:bg-slate-700 transition">
+                        <td class="py-4">Carlos Vendas</td>
+                        <td>12</td>
+                        <td class="text-green-400">R$ 2.700,00</td>
+                        <td>
+                            <form action="/banir/2" method="POST">
+                                <button class="bg-red-600 hover:bg-red-800 px-3 py-1 rounded text-sm">BANIR (X)</button>
+                            </form>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>
